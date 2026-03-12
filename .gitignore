@@ -1,0 +1,13 @@
+**/logs/
+**/*.parquet
+**/*.jsonl
+**/cache/
+**/__pycache__/
+M2RL/data/raw/
+M2RL/data/*train/
+M2RL/data/val/
+M2RL/data/temp/
+**/.claude
+.vscode
+Megatron-LM
+**/checkpoints/
