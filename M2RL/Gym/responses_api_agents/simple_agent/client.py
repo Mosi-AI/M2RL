@@ -18,7 +18,6 @@ from asyncio import run
 from nemo_gym.openai_utils import NeMoGymResponseCreateParamsNonStreaming
 from nemo_gym.server_utils import ServerClient
 
-
 server_client = ServerClient.load_from_global_config()
 task = server_client.post(
     server_name="example_single_tool_call_simple_agent",

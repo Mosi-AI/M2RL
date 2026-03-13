@@ -13,28 +13,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from collections import defaultdict
-from copy import deepcopy
-from os import environ, getenv
+from os import getenv
 from pathlib import Path
 from platform import python_version
-from random import randint
 from socket import gethostbyname, gethostname, socket
 from typing import ClassVar, List, Optional, Tuple, Type
 
 import hydra
 import rich
-import wandb
-import wandb.util
-from omegaconf import DictConfig, ListConfig, OmegaConf, open_dict
+from omegaconf import DictConfig, OmegaConf, open_dict
 from openai import __version__ as openai_version
 from pydantic import BaseModel, ConfigDict, TypeAdapter, ValidationError
 from ray import __version__ as ray_version
-from wandb import Run
 
-from nemo_gym import CACHE_DIR, PARENT_DIR, RESULTS_DIR
+from nemo_gym import PARENT_DIR
 from nemo_gym.config_types import (
     ServerInstanceConfig,
-    WANDBConfig,
     is_almost_server,
     is_server_ref,
     maybe_get_server_instance_config,
@@ -54,14 +48,8 @@ PYTHON_VERSION_KEY_NAME = "python_version"
 PIP_INSTALL_VERBOSE_KEY_NAME = "pip_install_verbose"
 USE_ABSOLUTE_IP = "use_absolute_ip"
 UV_PIP_SET_PYTHON_KEY_NAME = "uv_pip_set_python"
-SKIP_VENV_IF_PRESENT_KEY_NAME = "skip_venv_if_present"
 HF_TOKEN_KEY_NAME = "hf_token"
 RAY_HEAD_NODE_ADDRESS_KEY_NAME = "ray_head_node_address"
-PORT_RANGE_LOW_KEY_NAME = "port_range_low"
-PORT_RANGE_HIGH_KEY_NAME = "port_range_high"
-DRY_RUN_KEY_NAME = "dry_run"
-UV_CACHE_DIR_KEY_NAME = "uv_cache_dir"
-UV_VENV_DIR_KEY_NAME = "uv_venv_dir"
 NEMO_GYM_RESERVED_TOP_LEVEL_KEYS = [
     CONFIG_PATHS_KEY_NAME,
     ENTRYPOINT_KEY_NAME,
@@ -73,43 +61,15 @@ NEMO_GYM_RESERVED_TOP_LEVEL_KEYS = [
     PIP_INSTALL_VERBOSE_KEY_NAME,
     USE_ABSOLUTE_IP,
     UV_PIP_SET_PYTHON_KEY_NAME,
-    SKIP_VENV_IF_PRESENT_KEY_NAME,
     HF_TOKEN_KEY_NAME,
     RAY_HEAD_NODE_ADDRESS_KEY_NAME,
-    PORT_RANGE_LOW_KEY_NAME,
-    PORT_RANGE_HIGH_KEY_NAME,
-    DRY_RUN_KEY_NAME,
-    UV_CACHE_DIR_KEY_NAME,
-    UV_VENV_DIR_KEY_NAME,
 ]
-
-# Data keys
-TASK_INDEX_KEY_NAME = "_ng_task_index"
-ROLLOUT_INDEX_KEY_NAME = "_ng_rollout_index"
-RESPONSES_CREATE_PARAMS_KEY_NAME = "responses_create_params"
-RESPONSE_KEY_NAME = "response"
-AGENT_REF_KEY_NAME = "agent_ref"
 
 POLICY_BASE_URL_KEY_NAME = "policy_base_url"
 POLICY_API_KEY_KEY_NAME = "policy_api_key"  # pragma: allowlist secret
 POLICY_MODEL_NAME_KEY_NAME = "policy_model_name"
-POLICY_MODEL_KEY_NAME = "policy_model"
 
 DEFAULT_HEAD_SERVER_PORT = 11000
-
-
-# W&B
-# Increase row limit since some of our rollouts are pretty hefty
-wandb.util.VALUE_BYTES_LIMIT = 10_000_000
-_WANDB_RUN: Optional[Run] = None
-
-
-def get_wandb_run() -> Optional[Run]:
-    return _WANDB_RUN
-
-
-# OmegaConf new resolvers
-OmegaConf.register_new_resolver("swap_key", lambda a: f"${{swap_key:{a}}}")
 
 
 class GlobalConfigDictParserConfig(BaseModel):
@@ -156,10 +116,9 @@ class GlobalConfigDictParser(BaseModel):
         extra_configs: List[DictConfig] = []
         for config_path in config_paths:
             config_path = Path(config_path)
-            # Check cwd first for user's local configs, then install location
+            # Assume relative to the parent dir
             if not config_path.is_absolute():
-                cwd_path = Path.cwd() / config_path
-                config_path = cwd_path if cwd_path.exists() else PARENT_DIR / config_path
+                config_path = PARENT_DIR / config_path
 
             extra_config = OmegaConf.load(config_path)
             for new_config_path in extra_config.get(CONFIG_PATHS_KEY_NAME) or []:
@@ -190,8 +149,6 @@ class GlobalConfigDictParser(BaseModel):
         self,
         server_instance_configs: List[ServerInstanceConfig],
         default_host: str,
-        port_range_low: int,
-        port_range_high: int,
         initial_disallowed_ports: Optional[List[int]] = None,
     ) -> List[int]:
         server_refs = [c.get_server_ref() for c in server_instance_configs]
@@ -216,10 +173,8 @@ class GlobalConfigDictParser(BaseModel):
                 if not run_server_config_dict.get("host"):
                     run_server_config_dict["host"] = default_host
                 if not run_server_config_dict.get("port"):
-                    port = _find_open_port_using_range(
+                    port = find_open_port(
                         disallowed_ports=disallowed_ports,
-                        port_range_low=port_range_low,
-                        port_range_high=port_range_high,
                     )
                     run_server_config_dict["port"] = port
                     disallowed_ports.append(port)  # Disallow newly allocated port.
@@ -237,48 +192,13 @@ class GlobalConfigDictParser(BaseModel):
         for k, v in list(dict_config.items()):
             if isinstance(v, (DictConfig, dict)):
                 self._recursively_hide_secrets_helper(v)
-            elif isinstance(v, (ListConfig, list)):
+            elif isinstance(v, list):
                 for inner_v in v:
-                    if isinstance(inner_v, (DictConfig, dict)):
+                    if isinstance(v, (DictConfig, dict)):
                         self._recursively_hide_secrets_helper(inner_v)
             else:
                 if "token" in k or "key" in k:
                     dict_config[k] = "****"
-
-    def _recursively_swap_keys(self, dict_config: DictConfig) -> None:
-        frozen_dict_config = deepcopy(dict_config)
-        with open_dict(dict_config):
-            self._recursively_swap_keys_helper(dict_config, dict_config, frozen_dict_config)
-
-    def _recursively_swap_keys_helper(
-        self, dict_config: DictConfig, original_dict_config: DictConfig, frozen_dict_config: DictConfig
-    ) -> None:
-        for k, v in list(dict_config.items()):
-            if isinstance(v, (DictConfig, dict)):
-                self._recursively_swap_keys_helper(v, original_dict_config, frozen_dict_config)
-            elif isinstance(v, (ListConfig, list)):
-                for inner_v in v:
-                    if isinstance(inner_v, (DictConfig, dict)):
-                        self._recursively_swap_keys_helper(inner_v, original_dict_config, frozen_dict_config)
-
-            # e.g. ${swap_key:grpo.num_prompts_per_step}
-            is_swap = isinstance(v, str) and v.startswith("${swap_key:")
-            if not is_swap:
-                continue
-
-            path_to_swap = v.removeprefix("${swap_key:").removesuffix("}").split(".")
-            dict_containing_key_to_swap = self._recursive_index_dict_using_path(
-                original_dict_config, path_to_swap[:-1]
-            )
-            dict_containing_key_to_swap.pop(path_to_swap[-1])
-
-            dict_config[k] = self._recursive_index_dict_using_path(frozen_dict_config, path_to_swap)
-
-    def _recursive_index_dict_using_path(self, dict_config: DictConfig, path: List[str]) -> DictConfig:
-        for k in path:
-            dict_config = dict_config[k]
-
-        return dict_config
 
     def parse(self, parse_config: Optional[GlobalConfigDictParserConfig] = None) -> DictConfig:
         if parse_config is None:
@@ -293,13 +213,7 @@ class GlobalConfigDictParser(BaseModel):
         global_config_dict: DictConfig = OmegaConf.merge(initial_global_config_dict, global_config_dict)
 
         # Load the env.yaml config. We load it early so that people can use it to conveniently store config paths.
-        # Check cwd first for user's local env.yaml, then fall back to PARENT_DIR
-        if parse_config.dotenv_path:
-            dotenv_path = parse_config.dotenv_path
-        else:
-            cwd_env_yaml = Path.cwd() / "env.yaml"
-            dotenv_path = cwd_env_yaml if cwd_env_yaml.exists() else PARENT_DIR / "env.yaml"
-
+        dotenv_path = parse_config.dotenv_path or PARENT_DIR / "env.yaml"
         dotenv_extra_config = DictConfig({})
         if dotenv_path.exists() and not parse_config.skip_load_from_dotenv:
             dotenv_extra_config = OmegaConf.load(dotenv_path)
@@ -322,8 +236,6 @@ class GlobalConfigDictParser(BaseModel):
         if config_paths:
             with open_dict(global_config_dict):
                 global_config_dict[CONFIG_PATHS_KEY_NAME] = config_paths
-
-        self._recursively_swap_keys(global_config_dict)
 
         # Almost-server detection and reporting
         almost_servers = self.detect_and_report_almost_servers(global_config_dict)
@@ -357,17 +269,8 @@ class GlobalConfigDictParser(BaseModel):
         head_server_port = head_server_config.get("port", DEFAULT_HEAD_SERVER_PORT)
 
         initial_disallowed_ports = [head_server_port] if head_server_port is not None else []
-
-        with open_dict(global_config_dict):
-            port_range_low = global_config_dict.setdefault(PORT_RANGE_LOW_KEY_NAME, 10_001)
-            port_range_high = global_config_dict.setdefault(PORT_RANGE_HIGH_KEY_NAME, 20_000)
-
         disallowed_ports = self.validate_and_populate_defaults(
-            server_instance_configs=server_instance_configs,
-            default_host=default_host,
-            initial_disallowed_ports=initial_disallowed_ports,
-            port_range_low=port_range_low,
-            port_range_high=port_range_high,
+            server_instance_configs, default_host, initial_disallowed_ports
         )
 
         with open_dict(global_config_dict):
@@ -393,39 +296,8 @@ class GlobalConfigDictParser(BaseModel):
             # Constrain python version since ray is sensitive to this.
             global_config_dict[PYTHON_VERSION_KEY_NAME] = python_version()
 
-            # Skip venv setup is opt-in and defaults to False.
-            global_config_dict.setdefault(SKIP_VENV_IF_PRESENT_KEY_NAME, False)
-
-            global_config_dict.setdefault(DRY_RUN_KEY_NAME, False)
-
-            # UV related configuration
-            # UV caching directory overrides to local folders.
-            global_config_dict.setdefault(UV_CACHE_DIR_KEY_NAME, str(CACHE_DIR / "uv"))
-            # Set the appropriate environment variable here, and matche the config
-            environ["UV_CACHE_DIR"] = global_config_dict[UV_CACHE_DIR_KEY_NAME]
-            # By default, build the directories in their individual folders using the root repository
-            # e.g. PARENT_DIR/responses_api_models/my_server
-            global_config_dict.setdefault(UV_VENV_DIR_KEY_NAME, str(PARENT_DIR))
-
         if parse_config.hide_secrets:
             self._recursively_hide_secrets(global_config_dict)
-
-        # Set up W&B
-        wandb_config = WANDBConfig.model_validate(global_config_dict)
-        if wandb_config.is_available:  # pragma: no cover
-            environ["WANDB_API_KEY"] = wandb_config.wandb_api_key
-
-            global _WANDB_RUN
-            _WANDB_RUN = wandb.init(
-                project=wandb_config.wandb_project,
-                name=wandb_config.wandb_name,
-                dir=str(RESULTS_DIR / "wandb"),
-            )
-
-            # Log params
-            config_dict_to_log = deepcopy(global_config_dict)
-            self._recursively_hide_secrets(config_dict_to_log)
-            _WANDB_RUN.config.update(OmegaConf.to_container(config_dict_to_log))
 
         return global_config_dict
 
@@ -533,36 +405,14 @@ def find_open_port(
     if disallowed_ports is None:
         disallowed_ports = []
 
-    global_config_dict = get_global_config_dict()
-
-    return _find_open_port_using_range(
-        disallowed_ports=disallowed_ports,
-        max_retries=max_retries,
-        port_range_low=global_config_dict[PORT_RANGE_LOW_KEY_NAME],
-        port_range_high=global_config_dict[PORT_RANGE_HIGH_KEY_NAME],
-    )
-
-
-def _find_open_port_using_range(
-    disallowed_ports: List[int],
-    port_range_low: int,
-    port_range_high: int,
-    max_retries: int = 50,
-) -> int:  # pragma: no cover
     # Find an open port that doesn't conflict with disallowed ports.
+    for _ in range(max_retries):
+        with socket() as s:
+            s.bind(("", 0))  # Bind to a free port provided by the host.
+            port = s.getsockname()[1]
 
-    with socket() as s:
-        for _ in range(max_retries):
-            # Pick a random port in our range that is not disallowed
-            port = None
-            while port is None or port in disallowed_ports:
-                port = randint(port_range_low, port_range_high)
-
-            try:
-                s.bind(("", port))
+            if port not in disallowed_ports:
                 return port
-            except OSError:
-                pass
 
     raise RuntimeError(
         f"Unable to find an open port that doesn't conflict with disallowed ports "

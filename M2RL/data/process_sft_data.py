@@ -405,7 +405,6 @@ def main():
         # Step 2: Process rows concurrently with datasets library
         processed_ds = process_dataset_concurrent(ds, is_competitive)
         original_count = len(processed_ds)
-        print('Schema:', processed_ds.features)
 
         # Step 3: Sample dataset
         print(f"Sampling to {target_count} rows...")

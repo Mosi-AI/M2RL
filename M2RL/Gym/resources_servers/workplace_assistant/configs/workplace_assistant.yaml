@@ -1,15 +1,17 @@
 workplace_assistant:
   resources_servers:
     workplace_assistant:
-      entrypoint: app.py
+      entrypoint: my_app.py
       domain: agent
+      host: 0.0.0.0
+      port: 12000
       verified: false
       description: Workplace assistant multi-step tool-using environment
       value: Improve multi-step tool use capability
 workplace_assistant_simple_agent:
   responses_api_agents:
     simple_agent:
-      entrypoint: app.py
+      entrypoint: my_app.py
       max_steps: 6
       resources_server:
         type: resources_servers

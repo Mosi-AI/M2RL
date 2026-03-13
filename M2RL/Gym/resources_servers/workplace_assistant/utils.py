@@ -123,7 +123,10 @@ def execute_actions_and_reset_state(actions: List[Dict[str, str]]):
     # Execute the actions
     for action in actions:
         try:
-            tool_env["functions"][action["name"]](**json.loads(action["arguments"]))
+            arguments = action["arguments"]
+            if isinstance(arguments, str):
+                arguments = json.loads(arguments)
+            tool_env["functions"][action["name"]](**arguments)
         except Exception as e:
             print("Error executing tool: ", e)
             continue

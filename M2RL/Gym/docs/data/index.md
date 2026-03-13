@@ -1,7 +1,7 @@
 (data-index)=
 # Data
 
-NeMo Gym datasets use JSONL format for reinforcement learning (RL) training. Each dataset connects to an **agent server** (orchestrates agent-environment interactions) which routes requests to a **resources server** (provides tools and computes rewards).
+NeMo Gym datasets use JSONL format for reinforcement learning (RL) training. Each dataset connects to an agent server—the component that orchestrates agent-environment interactions during training.
 
 ## Prerequisites
 
@@ -28,38 +28,6 @@ Additional fields like `expected_answer` vary by resources server—the componen
 
 **Source**: `nemo_gym/base_resources_server.py:35-36`
 
-### Required Fields
-
-| Field | Added By | Description |
-|-------|----------|-------------|
-| `responses_create_params` | User | Input to the model during training. Contains `input` (messages) and optional `tools`, `temperature`, etc. |
-| `agent_ref` | `ng_prepare_data` | Routes each row to its resources server. Auto-generated during data preparation. |
-
-### Optional Fields
-
-| Field | Description |
-|-------|-------------|
-| `expected_answer` | Ground truth for verification (task-specific). |
-| `question` | Original question text (for reference). |
-| `id` | Tracking identifier. |
-
-:::{tip}
-Check `resources_servers/<name>/README.md` for fields required by each resources server's `verify()` method.
-:::
-
-### The `agent_ref` Field
-
-The `agent_ref` field maps each row to a specific resources server. A training dataset can blend multiple resources servers in a single file—`agent_ref` tells NeMo Gym which server handles each row.
-
-```json
-{
-  "responses_create_params": {"input": [{"role": "user", "content": "..."}]},
-  "agent_ref": {"type": "responses_api_agents", "name": "math_with_judge_simple_agent"}
-}
-```
-
-**You don't create `agent_ref` manually.** The `ng_prepare_data` tool adds it automatically based on your config file. The tool matches the agent type (`responses_api_agents`) with the agent name from the config.
-
 ### Example Data
 
 ```json
@@ -73,10 +41,8 @@ The `agent_ref` field maps each row to a specific resources server. A training d
 Run this command from the repository root:
 
 ```bash
-config_paths="responses_api_models/vllm_model/configs/vllm_model_for_training.yaml,\
-resources_servers/example_multi_step/configs/example_multi_step.yaml"
-
-ng_prepare_data "+config_paths=[${config_paths}]" \
+ng_prepare_data \
+    "+config_paths=[resources_servers/example_multi_step/configs/example_multi_step.yaml]" \
     +output_dirpath=data/test \
     +mode=example_validation
 ```
@@ -145,10 +111,8 @@ flowchart LR
 To prepare training data with auto-download:
 
 ```bash
-config_paths="responses_api_models/vllm_model/configs/vllm_model_for_training.yaml,\
-resources_servers/workplace_assistant/configs/workplace_assistant.yaml"
-
-ng_prepare_data "+config_paths=[${config_paths}]" \
+ng_prepare_data \
+    "+config_paths=[resources_servers/workplace_assistant/configs/workplace_assistant.yaml]" \
     +output_dirpath=data/workplace_assistant \
     +mode=train_preparation \
     +should_download=true
@@ -188,14 +152,6 @@ Fetch datasets from HuggingFace Hub.
 {bdg-secondary}`huggingface`
 :::
 
-:::{grid-item-card} {octicon}`pencil;1.5em;sd-mr-1` Prompt Config
-:link: prompt-config
-:link-type: doc
-YAML-based prompt templates applied at rollout time.
-+++
-{bdg-secondary}`prompts`
-:::
-
 ::::
 
 ## CLI Commands
@@ -204,6 +160,7 @@ YAML-based prompt templates applied at rollout time.
 |---------|-------------|
 | `ng_prepare_data` | Validate and generate metrics |
 | `ng_download_dataset_from_hf` | Download from HuggingFace |
+| `ng_viewer` | View dataset in Gradio UI |
 
 See {doc}`/reference/cli-commands` for details.
 

@@ -1,4 +1,4 @@
-# Math Formal Lean Resources Server
+# Math Formal Lean Resource Server
 
 Lean4 formal proof verification environment for NeMo Gym.
 
