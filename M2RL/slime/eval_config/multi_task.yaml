@@ -1,0 +1,17 @@
+eval:
+  defaults:
+    max_response_len: 32768
+    top_p: 0.7
+  datasets:
+    - name: aime24
+      path: ${oc.env:DATA_DIR}/val/aime-2024.parquet
+      rm_type: deepscaler
+      n_samples_per_eval_prompt: 16
+    - name: gpqa
+      path: ${oc.env:DATA_DIR}/val/gpqa.parquet
+      rm_type: gpqa
+      n_samples_per_eval_prompt: 4
+    - name: ifbench
+      path: ${oc.env:DATA_DIR}/val/IFBench_test.parquet
+      rm_type: ifbench
+      n_samples_per_eval_prompt: 1

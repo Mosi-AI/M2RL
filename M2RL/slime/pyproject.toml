@@ -1,0 +1,26 @@
+[project]
+name = "slime"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "flash-linear-attention==0.4.0",
+    "latex2sympy2>=1.9.1",
+    "mbridge",
+    "ninja>=1.13.0",
+    "nltk>=3.9.3",
+    "numpy==1.26.4",
+    "nvidia-cudnn-cu12==9.10.2.21",
+    "pebble>=5.2.0",
+    "poetry>=2.3.2",
+    "pybind11>=3.0.2",
+    "pylatexenc>=2.10",
+    "ray[default]==2.54.0",
+    "sglang==0.5.6",
+    "sglang-router==0.2.3",
+    "word2number>=1.1",
+]
+
+[tool.uv.sources]
+mbridge = { git = "https://github.com/ISEEKYAN/mbridge.git", rev = "89eb10887887bc74853f89a4de258c0702932a1c" }
