@@ -1,7 +1,7 @@
 <h1 align="center">To Mix or To Merge?<br/>Toward Multi-Domain Reinforcement Learning for Large Language Models</h1>
 
 <p align="center">
-  <a href="https://arxiv.org/abs/2602.12566"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b.svg" alt="arXiv"></a>
+  <a href="https://arxiv.org/abs/2602.12566v4"><img src="https://img.shields.io/badge/arXiv-Paper-b31b1b.svg" alt="arXiv"></a>
   <a href="https://hf.co/collections/Jackwang111/m2rl"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Models-ffd21e.svg" alt="Hugging Face"></a>
   <a href="https://modelscope.cn/collections/whq1111/M2RL"><img src="https://img.shields.io/badge/ModelScope-Models-5f4bff.svg" alt="ModelScope"></a>
   <a href="https://github.com/Mosi-AI/M2RL"><img src="https://img.shields.io/badge/GitHub-Code-181717.svg?logo=github" alt="GitHub"></a>
